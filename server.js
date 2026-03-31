@@ -1,16 +1,14 @@
-import express from "express";
+const express = require("express");
 
 const app = express();
-
-// 🔥 THIS IS THE KEY FIX
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
 // Root route
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// Weather route (safe test)
+// Weather test route
 app.get("/weather", (req, res) => {
   res.json({
     status: "working",
