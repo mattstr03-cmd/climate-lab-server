@@ -2,11 +2,11 @@ import express from "express";
 
 const app = express();
 
-// 🔑 PASTE YOUR DETAILS HERE
+// 🔑 YOUR DETAILS
 const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
 const STATION_ID = "ISYDNE4503";
 
-// 🌐 ROOT ROUTE (optional)
+// 🌐 ROOT
 app.get("/", (req, res) => {
   res.send("Climate Lab API is running 🚀");
 });
@@ -19,13 +19,30 @@ app.get("/weather", async (req, res) => {
     const response = await fetch(url);
     const data = await response.json();
 
-    const obs = data.observations[0].metric;
+    const observation = data.observations[0];
+    const metric = observation.metric;
 
-    const temp = obs.temp;
-    const humidity = obs.humidity;
-    const wind = obs.windSpeed;
-    const pressure = obs.pressure;
-    const updated = data.observations[0].obsTimeLocal;
+    // 🌡️ CORE DATA
+    const temp = metric.temp;
+    const feelsLike = metric.heatIndex;
+    const dewPoint = metric.dewpt;
+
+    // 💧 ATMOSPHERE
+    const humidity = observation.humidity;
+    const pressure = metric.pressure;
+
+    // 💨 WIND
+    const windSpeed = metric.windSpeed;
+    const windGust = metric.windGust;
+    const windDir = observation.winddir;
+
+    // 🌧️ RAIN
+    const precipRate = metric.precipRate;
+    const precipTotal = metric.precipTotal;
+
+    // 📍 META
+    const updated = observation.obsTimeLocal;
+    const location = observation.neighborhood || "Your Station";
 
     res.send(`
       <html>
@@ -39,42 +56,55 @@ app.get("/weather", async (req, res) => {
               display: flex;
               align-items: center;
               justify-content: center;
-              background: linear-gradient(to bottom, #1c1c1e, #2c2c2e);
+              background: linear-gradient(to bottom, #0f172a, #1e293b);
               font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
               color: white;
             }
 
             .card {
               background: rgba(255,255,255,0.08);
-              backdrop-filter: blur(20px);
+              backdrop-filter: blur(25px);
               padding: 30px;
-              border-radius: 25px;
-              width: 320px;
+              border-radius: 28px;
+              width: 340px;
               text-align: center;
-              box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+              box-shadow: 0 30px 60px rgba(0,0,0,0.5);
             }
 
             h1 {
-              margin-bottom: 20px;
-              font-size: 26px;
+              font-size: 22px;
+              margin-bottom: 5px;
+              opacity: 0.9;
+            }
+
+            .location {
+              font-size: 13px;
+              opacity: 0.6;
+              margin-bottom: 15px;
             }
 
             .temp {
-              font-size: 60px;
+              font-size: 64px;
               font-weight: 600;
               margin-bottom: 10px;
             }
 
-            .info {
-              font-size: 16px;
-              opacity: 0.85;
-              margin: 6px 0;
+            .section {
+              margin-top: 15px;
+              font-size: 14px;
+              opacity: 0.9;
             }
 
-            .updated {
-              margin-top: 15px;
+            .small {
               font-size: 12px;
               opacity: 0.6;
+              margin-top: 10px;
+            }
+
+            hr {
+              border: none;
+              border-top: 1px solid rgba(255,255,255,0.1);
+              margin: 15px 0;
             }
           </style>
         </head>
@@ -82,14 +112,33 @@ app.get("/weather", async (req, res) => {
         <body>
           <div class="card">
             <h1>🌦 Climate Lab</h1>
+            <div class="location">${location}</div>
 
             <div class="temp">${temp}°C</div>
 
-            <div class="info">Humidity: ${humidity}%</div>
-            <div class="info">Wind: ${wind} km/h</div>
-            <div class="info">Pressure: ${pressure} hPa</div>
+            <div class="section">
+              Feels Like: ${feelsLike}°C<br>
+              Humidity: ${humidity}%<br>
+              Dew Point: ${dewPoint}°C
+            </div>
 
-            <div class="updated">Updated: ${updated}</div>
+            <hr>
+
+            <div class="section">
+              Wind: ${windSpeed} km/h<br>
+              Gust: ${windGust} km/h<br>
+              Direction: ${windDir}°
+            </div>
+
+            <hr>
+
+            <div class="section">
+              Pressure: ${pressure} hPa<br>
+              Rain Rate: ${precipRate} mm/h<br>
+              Rain Today: ${precipTotal} mm
+            </div>
+
+            <div class="small">Updated: ${updated}</div>
           </div>
         </body>
       </html>
@@ -101,7 +150,7 @@ app.get("/weather", async (req, res) => {
   }
 });
 
-// 🚀 PORT (IMPORTANT FOR RAILWAY)
+// 🚀 PORT
 const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
