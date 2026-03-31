@@ -2,6 +2,7 @@ const express = require("express");
 
 const app = express();
 
+// 🚀 SIMPLE + RELIABLE
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
@@ -11,12 +12,7 @@ app.get("/", (req, res) => {
 app.get("/weather", (req, res) => {
   res.json({
     status: "working",
-    message: "API is alive",
-    data: {
-      temperature: 25,
-      humidity: 60,
-      windSpeed: 10
-    }
+    message: "API is alive"
   });
 });
 
