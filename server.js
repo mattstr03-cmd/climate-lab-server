@@ -2,10 +2,10 @@ const express = require("express");
 
 const app = express();
 
-// ✅ Railway uses this port automatically
-const PORT = process.env.PORT || 8080;
+// 🚨 IMPORTANT: use Railway port ONLY
+const PORT = process.env.PORT;
 
-// Root route (IMPORTANT for Railway)
+// Root route
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
@@ -23,7 +23,7 @@ app.get("/weather", (req, res) => {
   });
 });
 
-// ✅ CRITICAL: bind to 0.0.0.0
+// Bind properly
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
