@@ -24,28 +24,19 @@ app.get("/weather", async (req, res) => {
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!data.observations) {
-      return res.status(500).json({
-        error: "Weather API error",
-        details: data,
-      });
-    }
-
     const obs = data.observations[0];
 
-    res.json({
-      station: obs.stationID,
-      time: obs.obsTimeLocal,
-      temp: obs.metric.temp,
-      humidity: obs.humidity,
-      windSpeed: obs.metric.windSpeed,
-      windDir: obs.winddir,
-      pressure: obs.metric.pressure,
-    });
+    res.send(`
+      <h1>🌦️ My Weather Station</h1>
+      <p><strong>Temp:</strong> ${obs.metric.temp}°C</p>
+      <p><strong>Humidity:</strong> ${obs.humidity}%</p>
+      <p><strong>Wind:</strong> ${obs.metric.windSpeed} km/h</p>
+      <p><strong>Pressure:</strong> ${obs.metric.pressure} hPa</p>
+      <p><strong>Updated:</strong> ${obs.obsTimeLocal}</p>
+    `);
 
   } catch (error) {
-    console.error("Server crash:", error);
-    res.status(500).json({ error: "Server crashed" });
+    res.status(500).send("Error fetching weather");
   }
 });
 
