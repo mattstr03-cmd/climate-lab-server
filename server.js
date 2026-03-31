@@ -4,10 +4,10 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔑 Your API key (replace this)
+// 🔑 API key (set this in Railway Variables later)
 const API_KEY = process.env.API_KEY || "YOUR_API_KEY_HERE";
 
-// 🧠 Simple in-memory cache
+// 🧠 In-memory cache
 let cache = {
   data: null,
   timestamp: 0,
@@ -15,19 +15,19 @@ let cache = {
 
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
+// 🌍 Weather endpoint
 app.get("/weather", async (req, res) => {
   try {
     const now = Date.now();
 
-    // ✅ Return cached data if still valid
+    // ✅ Serve cached data if still valid
     if (cache.data && now - cache.timestamp < CACHE_DURATION) {
-      console.log("Serving from cache");
+      console.log("⚡ Serving from cache");
       return res.json(cache.data);
     }
 
-    console.log("Fetching fresh weather data");
+    console.log("🌐 Fetching fresh weather data");
 
-    // 🌍 Example: Sydney weather (change if needed)
     const url = `https://api.openweathermap.org/data/2.5/weather?q=Sydney&appid=${API_KEY}&units=metric`;
 
     const response = await fetch(url);
@@ -46,11 +46,12 @@ app.get("/weather", async (req, res) => {
     res.json(data);
 
   } catch (error) {
-    console.error(error);
+    console.error("❌ Error:", error.message);
     res.status(500).json({ error: "Failed to fetch weather" });
   }
 });
 
+// 🧪 Health check
 app.get("/", (req, res) => {
   res.send("Weather API is running 🚀");
 });
