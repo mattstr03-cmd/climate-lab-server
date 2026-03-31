@@ -2,15 +2,15 @@ import express from "express";
 
 const app = express();
 
-// IMPORTANT: Railway uses dynamic ports
-const PORT = process.env.PORT || 3000;
+// 🔥 THIS IS THE KEY FIX
+const PORT = process.env.PORT;
 
-// Root route (just to confirm server is alive)
+// Root route
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// Weather route (test data for now)
+// Weather route (safe test)
 app.get("/weather", (req, res) => {
   res.json({
     status: "working",
@@ -18,13 +18,12 @@ app.get("/weather", (req, res) => {
     data: {
       temperature: 25,
       humidity: 60,
-      windSpeed: 10,
-      source: "test data (not live yet)"
+      windSpeed: 10
     }
   });
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
