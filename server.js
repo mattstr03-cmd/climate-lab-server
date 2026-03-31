@@ -1,11 +1,7 @@
-import express from "express";
+const express = require("express");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// 🔑 YOUR DETAILS
-const API_KEY = "1nIKe0qQ";
-const STATION_ID = "ISYDNE4503";
+const PORT = process.env.PORT || 8080;
 
 // Health check
 app.get("/", (req, res) => {
@@ -15,19 +11,13 @@ app.get("/", (req, res) => {
   });
 });
 
-// Weather route
-app.get("/weather", async (req, res) => {
-  try {
-    const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-
-    const response = await fetch(url);
-    const data = await response.json();
-
-    res.json(data);
-  } catch (error) {
-    console.error("Error fetching weather:", error);
-    res.status(500).json({ error: "Failed to fetch weather data" });
-  }
+// TEMP TEST ROUTE (no API yet)
+app.get("/weather", (req, res) => {
+  res.json({
+    temperature: 22.5,
+    humidity: 60,
+    source: "test"
+  });
 });
 
 app.listen(PORT, () => {
