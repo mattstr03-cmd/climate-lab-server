@@ -2,215 +2,452 @@ import express from "express";
 
 const app = express();
 
-// 🔑 YOUR DETAILS
 const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
 const STATION_ID = "ISYDNE4503";
+const PORT = process.env.PORT || 8080;
 
-// 🌦 WEATHER ROUTE
-app.get("/weather", async (req, res) => {
+function toTimeLabel(obsTimeLocal) {
+  if (!obsTimeLocal) return "--:--";
+  const parts = obsTimeLocal.split(" ");
+  return parts[1]?.slice(0, 5) || obsTimeLocal;
+}
+
+function safeNum(value, fallback = null) {
+  return typeof value === "number" && !Number.isNaN(value) ? value : fallback;
+}
+
+// Raw JSON endpoint for current + history
+app.get("/api/weather", async (req, res) => {
   try {
     const currentUrl = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
     const historyUrl = `https://api.weather.com/v2/pws/observations/all/1day?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
 
-    const currentRes = await fetch(currentUrl);
-    const historyRes = await fetch(historyUrl);
+    const [currentRes, historyRes] = await Promise.all([
+      fetch(currentUrl),
+      fetch(historyUrl),
+    ]);
 
-    const currentData = await currentRes.json();
-    const historyData = await historyRes.json();
+    const [currentData, historyData] = await Promise.all([
+      currentRes.json(),
+      historyRes.json(),
+    ]);
 
-    const obs = currentData.observations[0];
-    const m = obs.metric;
+    if (!currentData?.observations?.length) {
+      return res.status(500).json({ error: "No current observation data" });
+    }
 
-    // 🟢 CURRENT DATA
-    const data = {
-      temp: m.temp,
-      feelsLike: m.heatIndex,
-      humidity: obs.humidity,
-      wind: m.windSpeed,
-      windGust: m.windGust,
-      windDir: obs.winddir,
-      pressure: m.pressure,
-      dewpt: m.dewpt,
-      precipRate: m.precipRate,
-      precipTotal: m.precipTotal,
-      uv: obs.uv,
-      solar: obs.solarRadiation,
-      updated: obs.obsTimeLocal
+    if (!historyData?.observations?.length) {
+      return res.status(500).json({ error: "No history observation data" });
+    }
+
+    const currentObs = currentData.observations[0];
+    const currentMetric = currentObs.metric || {};
+
+    // Last 1 hour by taking recent points from the end and comparing epoch seconds
+    const allHistory = historyData.observations;
+    const latestEpoch = allHistory[allHistory.length - 1]?.epoch || currentObs.epoch;
+    const oneHourAgoEpoch = latestEpoch - 3600;
+
+    const lastHour = allHistory.filter((o) => (o.epoch || 0) >= oneHourAgoEpoch);
+
+    const chart = {
+      labels: lastHour.map((o) => toTimeLabel(o.obsTimeLocal)),
+      temperature: lastHour.map((o) => safeNum(o.metric?.temp)),
+      humidity: lastHour.map((o) => safeNum(o.humidity)),
+      windSpeed: lastHour.map((o) => safeNum(o.metric?.windSpeed)),
+      pressure: lastHour.map((o) => safeNum(o.metric?.pressure)),
+      rainRate: lastHour.map((o) => safeNum(o.metric?.precipRate, 0)),
+      rainTotal: lastHour.map((o) => safeNum(o.metric?.precipTotal, 0)),
     };
 
-    // 📊 LAST 1 HOUR DATA
-    const now = Date.now();
-    const oneHourAgo = now - (60 * 60 * 1000);
+    const current = {
+      location: currentObs.neighborhood || "Your Station",
+      updated: currentObs.obsTimeLocal,
+      temp: safeNum(currentMetric.temp),
+      feelsLike: safeNum(currentMetric.heatIndex),
+      humidity: safeNum(currentObs.humidity),
+      dewpt: safeNum(currentMetric.dewpt),
+      wind: safeNum(currentMetric.windSpeed, 0),
+      windGust: safeNum(currentMetric.windGust, 0),
+      windDir: safeNum(currentObs.winddir),
+      pressure: safeNum(currentMetric.pressure),
+      precipRate: safeNum(currentMetric.precipRate, 0),
+      precipTotal: safeNum(currentMetric.precipTotal, 0),
+      uv: safeNum(currentObs.uv),
+      solar: safeNum(currentObs.solarRadiation),
+    };
 
-    const history = historyData.observations.filter(o => {
-      return new Date(o.obsTimeLocal).getTime() >= oneHourAgo;
-    });
+    res.json({ current, chart });
+  } catch (err) {
+    console.error("API weather error:", err);
+    res.status(500).json({ error: "Failed to load weather data" });
+  }
+});
 
-    const times = history.map(o => o.obsTimeLocal.split(" ")[1]);
-    const temps = history.map(o => o.metric.temp);
-    const humidityArr = history.map(o => o.humidity);
-    const windArr = history.map(o => o.metric.windSpeed);
-    const pressureArr = history.map(o => o.metric.pressure);
+// Simple root
+app.get("/", (req, res) => {
+  res.send('Climate Lab is running 🚀 Open <a href="/weather">/weather</a>');
+});
 
-    res.send(`
+// Dashboard page
+app.get("/weather", (req, res) => {
+  res.send(`
+<!doctype html>
 <html>
 <head>
-<title>Climate Lab</title>
+  <meta charset="utf-8" />
+  <title>Climate Lab</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      background: linear-gradient(to bottom, #0f172a, #1e293b);
+      color: white;
+      padding: 20px;
+    }
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="10">
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    .card {
+      background: rgba(255,255,255,0.08);
+      backdrop-filter: blur(20px);
+      border-radius: 28px;
+      padding: 24px;
+      box-shadow: 0 30px 60px rgba(0,0,0,0.35);
+      margin-bottom: 20px;
+    }
 
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system;
-  background: linear-gradient(to bottom, #0f172a, #1e293b);
-  color: white;
-  padding: 20px;
-}
+    .top {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 20px;
+    }
 
-.card {
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(20px);
-  padding: 25px;
-  border-radius: 25px;
-  max-width: 420px;
-  margin: auto;
-  margin-bottom: 20px;
-}
+    .title {
+      font-size: 22px;
+      font-weight: 700;
+      text-align: center;
+    }
 
-.title {
-  text-align: center;
-  font-size: 20px;
-}
+    .location {
+      text-align: center;
+      opacity: 0.7;
+      font-size: 13px;
+      margin-top: 4px;
+    }
 
-.temp {
-  text-align: center;
-  font-size: 60px;
-}
+    .temp {
+      text-align: center;
+      font-size: 72px;
+      font-weight: 700;
+      line-height: 1;
+      margin: 16px 0 8px;
+    }
 
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  font-size: 14px;
-  margin-top: 10px;
-}
+    .feels {
+      text-align: center;
+      opacity: 0.8;
+      margin-bottom: 18px;
+    }
 
-.graph {
-  background: rgba(255,255,255,0.05);
-  padding: 20px;
-  border-radius: 20px;
-  margin-top: 20px;
-}
-</style>
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 16px;
+      font-size: 15px;
+    }
+
+    .metric-box {
+      background: rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 12px 14px;
+    }
+
+    .metric-label {
+      opacity: 0.7;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .updated {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 12px;
+      opacity: 0.65;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .chart-card {
+      background: rgba(255,255,255,0.06);
+      border-radius: 22px;
+      padding: 16px;
+      min-height: 260px;
+    }
+
+    .chart-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+
+    .status {
+      text-align: center;
+      margin-bottom: 12px;
+      font-size: 13px;
+      opacity: 0.8;
+    }
+
+    @media (max-width: 900px) {
+      .top, .charts {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
-
 <body>
+  <div class="wrap">
+    <div class="status" id="status">Loading…</div>
 
-<div class="card">
-  <div class="title">🌦 Climate Lab</div>
-  <div class="temp">${data.temp}°C</div>
+    <div class="top">
+      <div class="card">
+        <div class="title">🌦 Climate Lab</div>
+        <div class="location" id="location">—</div>
+        <div class="temp" id="temp">--°C</div>
+        <div class="feels" id="feels">Feels like --°</div>
 
-  <div style="text-align:center;font-size:14px;">
-    Feels like ${data.feelsLike ?? "--"}°
+        <div class="grid">
+          <div class="metric-box">
+            <div class="metric-label">Humidity</div>
+            <div class="metric-value" id="humidity">--%</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Dew Point</div>
+            <div class="metric-value" id="dewpt">--°C</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Wind</div>
+            <div class="metric-value" id="wind">-- km/h</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Wind Gust</div>
+            <div class="metric-value" id="windGust">-- km/h</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Wind Direction</div>
+            <div class="metric-value" id="windDir">--°</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Pressure</div>
+            <div class="metric-value" id="pressure">-- hPa</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Rain Rate</div>
+            <div class="metric-value" id="precipRate">-- mm</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Rain Total</div>
+            <div class="metric-value" id="precipTotal">-- mm</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">UV</div>
+            <div class="metric-value" id="uv">--</div>
+          </div>
+
+          <div class="metric-box">
+            <div class="metric-label">Solar</div>
+            <div class="metric-value" id="solar">--</div>
+          </div>
+        </div>
+
+        <div class="updated" id="updated">Updated: --</div>
+      </div>
+
+      <div class="card">
+        <div class="chart-title">Station Summary</div>
+        <div class="grid">
+          <div class="metric-box">
+            <div class="metric-label">Current Temp</div>
+            <div class="metric-value" id="summaryTemp">--°C</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Current Humidity</div>
+            <div class="metric-value" id="summaryHumidity">--%</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Current Wind</div>
+            <div class="metric-value" id="summaryWind">-- km/h</div>
+          </div>
+          <div class="metric-box">
+            <div class="metric-label">Current Pressure</div>
+            <div class="metric-value" id="summaryPressure">-- hPa</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-card">
+        <div class="chart-title">Temperature · Last 1 Hour</div>
+        <canvas id="tempChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Humidity · Last 1 Hour</div>
+        <canvas id="humidityChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Wind Speed · Last 1 Hour</div>
+        <canvas id="windChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Pressure · Last 1 Hour</div>
+        <canvas id="pressureChart"></canvas>
+      </div>
+    </div>
   </div>
 
-  <div class="grid">
-    <div>Humidity: ${data.humidity}%</div>
-    <div>Dew Point: ${data.dewpt}°C</div>
+  <script>
+    let tempChart, humidityChart, windChart, pressureChart;
 
-    <div>Wind: ${data.wind} km/h</div>
-    <div>Gust: ${data.windGust ?? 0} km/h</div>
+    function makeChart(canvasId, label, color, labels, data) {
+      return new Chart(document.getElementById(canvasId), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label,
+            data,
+            borderColor: color,
+            backgroundColor: color,
+            tension: 0.35,
+            spanGaps: true,
+            pointRadius: 2,
+            pointHoverRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: {
+              labels: { color: "#ffffff" }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: "rgba(255,255,255,0.7)" },
+              grid: { color: "rgba(255,255,255,0.08)" }
+            },
+            y: {
+              ticks: { color: "rgba(255,255,255,0.7)" },
+              grid: { color: "rgba(255,255,255,0.08)" }
+            }
+          }
+        }
+      });
+    }
 
-    <div>Direction: ${data.windDir}°</div>
-    <div>Pressure: ${data.pressure} hPa</div>
+    function updateOrCreateChart(chartRef, canvasId, label, color, labels, data) {
+      if (!chartRef) {
+        return makeChart(canvasId, label, color, labels, data);
+      }
+      chartRef.data.labels = labels;
+      chartRef.data.datasets[0].data = data;
+      chartRef.update("none");
+      return chartRef;
+    }
 
-    <div>Rain Rate: ${data.precipRate} mm</div>
-    <div>Rain Total: ${data.precipTotal} mm</div>
+    function setText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
 
-    <div>UV: ${data.uv ?? "--"}</div>
-    <div>Solar: ${data.solar ?? "--"}</div>
-  </div>
+    async function loadWeather() {
+      try {
+        setText("status", "Refreshing…");
 
-  <div style="text-align:center;margin-top:10px;font-size:12px;opacity:0.7;">
-    Updated: ${data.updated}
-  </div>
-</div>
+        const res = await fetch("/api/weather?t=" + Date.now());
+        const payload = await res.json();
 
-<div class="graph"><canvas id="tempChart"></canvas></div>
-<div class="graph"><canvas id="humidityChart"></canvas></div>
-<div class="graph"><canvas id="windChart"></canvas></div>
-<div class="graph"><canvas id="pressureChart"></canvas></div>
+        if (!res.ok || payload.error) {
+          throw new Error(payload.error || "Failed to load weather");
+        }
 
-<script>
-const labels = ${JSON.stringify(times)};
+        const c = payload.current;
+        const g = payload.chart;
 
-new Chart(tempChart, {
-  type: 'line',
-  data: {
-    labels,
-    datasets: [{
-      label: 'Temp (°C)',
-      data: ${JSON.stringify(temps)},
-      borderColor: '#ff3b30',
-      tension: 0.4
-    }]
-  }
-});
+        setText("location", c.location || "Your Station");
+        setText("temp", \`\${c.temp ?? "--"}°C\`);
+        setText("feels", \`Feels like \${c.feelsLike ?? "--"}°\`);
 
-new Chart(humidityChart, {
-  type: 'line',
-  data: {
-    labels,
-    datasets: [{
-      label: 'Humidity (%)',
-      data: ${JSON.stringify(humidityArr)},
-      borderColor: '#0a84ff',
-      tension: 0.4
-    }]
-  }
-});
+        setText("humidity", \`\${c.humidity ?? "--"}%\`);
+        setText("dewpt", \`\${c.dewpt ?? "--"}°C\`);
+        setText("wind", \`\${c.wind ?? "--"} km/h\`);
+        setText("windGust", \`\${c.windGust ?? "--"} km/h\`);
+        setText("windDir", \`\${c.windDir ?? "--"}°\`);
+        setText("pressure", \`\${c.pressure ?? "--"} hPa\`);
+        setText("precipRate", \`\${c.precipRate ?? "--"} mm\`);
+        setText("precipTotal", \`\${c.precipTotal ?? "--"} mm\`);
+        setText("uv", c.uv ?? "--");
+        setText("solar", c.solar ?? "--");
+        setText("updated", \`Updated: \${c.updated ?? "--"}\`);
 
-new Chart(windChart, {
-  type: 'line',
-  data: {
-    labels,
-    datasets: [{
-      label: 'Wind (km/h)',
-      data: ${JSON.stringify(windArr)},
-      borderColor: '#34c759',
-      tension: 0.4
-    }]
-  }
-});
+        setText("summaryTemp", \`\${c.temp ?? "--"}°C\`);
+        setText("summaryHumidity", \`\${c.humidity ?? "--"}%\`);
+        setText("summaryWind", \`\${c.wind ?? "--"} km/h\`);
+        setText("summaryPressure", \`\${c.pressure ?? "--"} hPa\`);
 
-new Chart(pressureChart, {
-  type: 'line',
-  data: {
-    labels,
-    datasets: [{
-      label: 'Pressure (hPa)',
-      data: ${JSON.stringify(pressureArr)},
-      borderColor: '#ff9f0a',
-      tension: 0.4
-    }]
-  }
-});
-</script>
+        tempChart = updateOrCreateChart(
+          tempChart, "tempChart", "Temperature (°C)", "#ff453a", g.labels, g.temperature
+        );
+        humidityChart = updateOrCreateChart(
+          humidityChart, "humidityChart", "Humidity (%)", "#0a84ff", g.labels, g.humidity
+        );
+        windChart = updateOrCreateChart(
+          windChart, "windChart", "Wind (km/h)", "#30d158", g.labels, g.windSpeed
+        );
+        pressureChart = updateOrCreateChart(
+          pressureChart, "pressureChart", "Pressure (hPa)", "#ffd60a", g.labels, g.pressure
+        );
 
+        setText("status", "Live • updates every 10 seconds");
+      } catch (err) {
+        console.error(err);
+        setText("status", "Failed to refresh data");
+      }
+    }
+
+    loadWeather();
+    setInterval(loadWeather, 10000);
+  </script>
 </body>
 </html>
-    `);
-
-  } catch (err) {
-    console.error(err);
-    res.send("Error loading data");
-  }
+  `);
 });
 
-// 🚀 PORT
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("Running on " + PORT));
+app.listen(PORT, () => {
+  console.log("Server running on port " + PORT);
+});
