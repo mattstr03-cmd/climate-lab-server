@@ -6,147 +6,187 @@ const app = express();
 const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
 const STATION_ID = "ISYDNE4503";
 
-// 🌐 ROOT
-app.get("/", (req, res) => {
-  res.send("Climate Lab API is running 🚀");
-});
-
-// 🌦 WEATHER ROUTE
+// 🌦 WEATHER + GRAPH ROUTE
 app.get("/weather", async (req, res) => {
   try {
-    const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
+    // current
+    const currentUrl = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
 
-    const response = await fetch(url);
-    const data = await response.json();
+    // historical (last ~1 day)
+    const historyUrl = `https://api.weather.com/v2/pws/observations/all/1day?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
 
-    const observation = data.observations[0];
+    const currentRes = await fetch(currentUrl);
+    const historyRes = await fetch(historyUrl);
+
+    const currentData = await currentRes.json();
+    const historyData = await historyRes.json();
+
+    const observation = currentData.observations[0];
     const metric = observation.metric;
 
-    // 🌡️ CORE DATA
+    // 🌡️ CURRENT DATA
     const temp = metric.temp;
-    const feelsLike = metric.heatIndex;
-    const dewPoint = metric.dewpt;
-
-    // 💧 ATMOSPHERE
     const humidity = observation.humidity;
+    const wind = metric.windSpeed;
     const pressure = metric.pressure;
-
-    // 💨 WIND
-    const windSpeed = metric.windSpeed;
-    const windGust = metric.windGust;
-    const windDir = observation.winddir;
-
-    // 🌧️ RAIN
-    const precipRate = metric.precipRate;
-    const precipTotal = metric.precipTotal;
-
-    // 📍 META
     const updated = observation.obsTimeLocal;
-    const location = observation.neighborhood || "Your Station";
+
+    // 📊 GRAPH DATA (last 20 points)
+    const history = historyData.observations.slice(-20);
+
+    const times = history.map(o => o.obsTimeLocal.split(" ")[1]);
+    const temps = history.map(o => o.metric.temp);
+    const humidityArr = history.map(o => o.humidity);
+    const windArr = history.map(o => o.metric.windSpeed);
+    const pressureArr = history.map(o => o.metric.pressure);
 
     res.send(`
       <html>
         <head>
           <title>Climate Lab</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
           <style>
             body {
               margin: 0;
-              height: 100vh;
-              display: flex;
-              align-items: center;
-              justify-content: center;
+              font-family: -apple-system, BlinkMacSystemFont;
               background: linear-gradient(to bottom, #0f172a, #1e293b);
-              font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
               color: white;
+              padding: 20px;
             }
 
             .card {
               background: rgba(255,255,255,0.08);
-              backdrop-filter: blur(25px);
-              padding: 30px;
-              border-radius: 28px;
-              width: 340px;
+              backdrop-filter: blur(20px);
+              padding: 25px;
+              border-radius: 25px;
+              max-width: 400px;
+              margin: auto;
               text-align: center;
-              box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+              margin-bottom: 20px;
             }
 
             h1 {
+              margin: 0;
               font-size: 22px;
-              margin-bottom: 5px;
-              opacity: 0.9;
-            }
-
-            .location {
-              font-size: 13px;
-              opacity: 0.6;
-              margin-bottom: 15px;
             }
 
             .temp {
-              font-size: 64px;
-              font-weight: 600;
-              margin-bottom: 10px;
+              font-size: 60px;
+              margin: 10px 0;
             }
 
-            .section {
-              margin-top: 15px;
+            .info {
               font-size: 14px;
-              opacity: 0.9;
+              opacity: 0.85;
             }
 
-            .small {
-              font-size: 12px;
-              opacity: 0.6;
-              margin-top: 10px;
-            }
-
-            hr {
-              border: none;
-              border-top: 1px solid rgba(255,255,255,0.1);
-              margin: 15px 0;
+            .graph {
+              background: rgba(255,255,255,0.05);
+              padding: 20px;
+              border-radius: 20px;
+              margin-top: 20px;
             }
           </style>
         </head>
 
         <body>
+
+          <!-- CURRENT CARD -->
           <div class="card">
             <h1>🌦 Climate Lab</h1>
-            <div class="location">${location}</div>
-
             <div class="temp">${temp}°C</div>
-
-            <div class="section">
-              Feels Like: ${feelsLike}°C<br>
-              Humidity: ${humidity}%<br>
-              Dew Point: ${dewPoint}°C
-            </div>
-
-            <hr>
-
-            <div class="section">
-              Wind: ${windSpeed} km/h<br>
-              Gust: ${windGust} km/h<br>
-              Direction: ${windDir}°
-            </div>
-
-            <hr>
-
-            <div class="section">
-              Pressure: ${pressure} hPa<br>
-              Rain Rate: ${precipRate} mm/h<br>
-              Rain Today: ${precipTotal} mm
-            </div>
-
-            <div class="small">Updated: ${updated}</div>
+            <div class="info">Humidity: ${humidity}%</div>
+            <div class="info">Wind: ${wind} km/h</div>
+            <div class="info">Pressure: ${pressure} hPa</div>
+            <div class="info">Updated: ${updated}</div>
           </div>
+
+          <!-- TEMP GRAPH -->
+          <div class="graph">
+            <canvas id="tempChart"></canvas>
+          </div>
+
+          <!-- HUMIDITY GRAPH -->
+          <div class="graph">
+            <canvas id="humidityChart"></canvas>
+          </div>
+
+          <!-- WIND GRAPH -->
+          <div class="graph">
+            <canvas id="windChart"></canvas>
+          </div>
+
+          <!-- PRESSURE GRAPH -->
+          <div class="graph">
+            <canvas id="pressureChart"></canvas>
+          </div>
+
+          <script>
+            const labels = ${JSON.stringify(times)};
+
+            new Chart(document.getElementById('tempChart'), {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Temperature (°C)',
+                  data: ${JSON.stringify(temps)},
+                  borderColor: '#ff3b30',
+                  tension: 0.4
+                }]
+              }
+            });
+
+            new Chart(document.getElementById('humidityChart'), {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Humidity (%)',
+                  data: ${JSON.stringify(humidityArr)},
+                  borderColor: '#0a84ff',
+                  tension: 0.4
+                }]
+              }
+            });
+
+            new Chart(document.getElementById('windChart'), {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Wind (km/h)',
+                  data: ${JSON.stringify(windArr)},
+                  borderColor: '#34c759',
+                  tension: 0.4
+                }]
+              }
+            });
+
+            new Chart(document.getElementById('pressureChart'), {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Pressure (hPa)',
+                  data: ${JSON.stringify(pressureArr)},
+                  borderColor: '#ff9f0a',
+                  tension: 0.4
+                }]
+              }
+            });
+          </script>
+
         </body>
       </html>
     `);
 
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error fetching weather data ❌");
+    res.send("Error loading data");
   }
 });
 
