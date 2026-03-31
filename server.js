@@ -2,15 +2,12 @@ const express = require("express");
 
 const app = express();
 
-// 🚨 IMPORTANT: use Railway port ONLY
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 3000;
 
-// Root route
 app.get("/", (req, res) => {
   res.send("Server is running 🚀");
 });
 
-// Weather route
 app.get("/weather", (req, res) => {
   res.json({
     status: "working",
@@ -23,7 +20,6 @@ app.get("/weather", (req, res) => {
   });
 });
 
-// Bind properly
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Server running on port ${PORT}`);
 });
