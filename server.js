@@ -4,58 +4,66 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🔑 API key (set this in Railway Variables later)
-const API_KEY = process.env.API_KEY || "YOUR_API_KEY_HERE";
-
-// 🧠 In-memory cache
+// 🧠 cache
 let cache = {
   data: null,
   timestamp: 0,
 };
 
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const CACHE_DURATION = 60 * 1000; // 1 minute
 
-// 🌍 Weather endpoint
+// 🔥 YOUR STATION ID
+const STATION_ID = "ISYDNE4503";
+
 app.get("/weather", async (req, res) => {
   try {
     const now = Date.now();
 
-    // ✅ Serve cached data if still valid
+    // ⚡ serve cached data
     if (cache.data && now - cache.timestamp < CACHE_DURATION) {
-      console.log("⚡ Serving from cache");
+      console.log("⚡ Serving cached station data");
       return res.json(cache.data);
     }
 
-    console.log("🌐 Fetching fresh weather data");
+    console.log("🌐 Fetching station data...");
 
-    const url = `https://api.openweathermap.org/data/2.5/weather?q=Sydney&appid=${API_KEY}&units=metric`;
+    // 🔥 Wunderground internal endpoint
+    const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=2d0d8b9d9b8d4b5fa3b8b9d8b9d8b9d`;
 
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.message || "API error");
-    }
+    // ✅ extract only useful data
+    const obs = data.observations?.[0];
 
-    // 💾 Save to cache
-    cache = {
-      data: data,
-      timestamp: now,
+    const cleaned = {
+      tempC: obs?.metric?.temp,
+      humidity: obs?.humidity,
+      windSpeedKPH: obs?.metric?.windSpeed,
+      pressure: obs?.metric?.pressure,
+      windDir: obs?.winddir
     };
 
-    res.json(data);
+    // 💾 cache it
+    cache = {
+      data: cleaned,
+      timestamp: now
+    };
+
+    res.json(cleaned);
 
   } catch (error) {
-    console.error("❌ Error:", error.message);
-    res.status(500).json({ error: "Failed to fetch weather" });
+    console.error(error);
+
+    // fallback to cache
+    if (cache.data) {
+      return res.json(cache.data);
+    }
+
+    res.status(500).json({ error: "Failed to fetch station data" });
   }
 });
 
-// 🧪 Health check
-app.get("/", (req, res) => {
-  res.send("Weather API is running 🚀");
-});
-
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
