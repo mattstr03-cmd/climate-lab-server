@@ -1,69 +1,46 @@
 import express from "express";
 import fetch from "node-fetch";
-import pkg from "pg";
-
-const { Pool } = pkg;
 
 const app = express();
 const port = process.env.PORT || 8080;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
 const API_KEY = process.env.API_KEY;
 const STATION_ID = process.env.STATION_ID;
 
-// Create table if not exists
-await pool.query(`
-  CREATE TABLE IF NOT EXISTS weather_data (
-    id SERIAL PRIMARY KEY,
-    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    temp FLOAT,
-    humidity FLOAT,
-    wind FLOAT,
-    pressure FLOAT
-  );
-`);
-
-// Function to fetch + store data
-async function fetchAndStore() {
+app.get("/", async (req, res) => {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    
+    const response = await fetch(url);
+    const data = await response.json();
 
-    const obs = data.observations[0].metric;
+    const obs = data.observations[0];
+    const m = obs.metric;
 
-    await pool.query(
-      `INSERT INTO weather_data (temp, humidity, wind, pressure)
-       VALUES ($1, $2, $3, $4)`,
-      [
-        obs.temp,
-        data.observations[0].humidity,
-        obs.windSpeed,
-        obs.pressure,
-      ]
-    );
+    res.send(`
+      <html>
+        <body style="background:black;color:white;font-family:sans-serif;text-align:center;padding-top:100px;">
+          <h1>🌤 Climate Lab</h1>
+          <h2 style="font-size:60px;">${m.temp}°C</h2>
 
-    console.log("Saved weather data");
+          <p>Humidity: ${obs.humidity}%</p>
+          <p>Wind: ${m.windSpeed} km/h</p>
+          <p>Pressure: ${m.pressure} hPa</p>
+          <p>Dew Point: ${m.dewpt}°C</p>
+          <p>Feels Like: ${m.heatIndex}°C</p>
+
+          <p style="margin-top:30px;font-size:12px;">
+            Updated: ${obs.obsTimeLocal}
+          </p>
+        </body>
+      </html>s
+    `);
   } catch (err) {
-    console.error("Error:", err);
+    res.send("Error fetching weather");
+    console.error(err);
   }
-}
-
-// Run every 10 seconds
-setInterval(fetchAndStore, 10000);
-
-// Route to get history
-app.get("/history", async (req, res) => {
-  const result = await pool.query(
-    "SELECT * FROM weather_data ORDER BY time DESC LIMIT 1000"
-  );
-  res.json(result.rows);
 });
 
 app.listen(port, () => {
-  console.log(`Server running on ${port}`);
+  console.log("Server running on port " + port);
 });
