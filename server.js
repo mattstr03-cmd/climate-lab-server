@@ -4,16 +4,19 @@ import fetch from "node-fetch";
 const app = express();
 const port = process.env.PORT || 8080;
 
-// 🔥 HARDCODE (no env variables anymore)
 const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
 const STATION_ID = "ISYDNE4503";
 
-app.get("/", async (req, res) => {
+async function renderWeather(req, res) {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-
     const response = await fetch(url);
     const data = await response.json();
+
+    if (!data?.observations?.[0]?.metric) {
+      console.error("Bad weather response:", data);
+      return res.status(500).send("Cannot get weather");
+    }
 
     const obs = data.observations[0];
     const m = obs.metric;
@@ -37,10 +40,13 @@ app.get("/", async (req, res) => {
       </html>
     `);
   } catch (err) {
-    console.error(err);
-    res.send("Error fetching weather");
+    console.error("Weather fetch error:", err);
+    res.status(500).send("Cannot get weather");
   }
-});
+}
+
+app.get("/", renderWeather);
+app.get("/weather", renderWeather);
 
 app.listen(port, () => {
   console.log("Server running on port " + port);
