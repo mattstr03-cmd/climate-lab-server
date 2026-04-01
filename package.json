@@ -1,18 +1,13 @@
 {
   "name": "climate-lab-server",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "module",
   "dependencies": {
     "express": "^5.2.1",
-    "node-fetch": "^3.3.2"
+    "pg": "^8.12.0"
   }
 }
