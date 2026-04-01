@@ -6,92 +6,133 @@ const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
 const STATION_ID = "ISYDNE4503";
 const PORT = process.env.PORT || 8080;
 
-function safe(v, d = "--") {
-  return v ?? d;
+function safe(v, fallback = "--") {
+  return v !== undefined && v !== null ? v : fallback;
 }
 
+// API ROUTE
 app.get("/api/weather", async (req, res) => {
   try {
-    const url = `https://api.weather.com/v2/pws/observations/all/1day?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-    const r = await fetch(url);
-    const data = await r.json();
+    const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
 
-    res.json(data.observations);
+    const obs = data.observations[0];
+    const m = obs.metric;
+
+    res.json({
+      location: obs.neighborhood || "Your Station",
+      updated: obs.obsTimeLocal,
+
+      temp: m.temp,
+      feelsLike: m.heatIndex,
+
+      humidity: obs.humidity,
+      dewpt: m.dewpt,
+
+      wind: m.windSpeed,
+      windGust: m.windGust,
+      windDir: obs.winddir,
+
+      pressure: m.pressure,
+
+      precipRate: m.precipRate,
+      precipTotal: m.precipTotal,
+
+      uv: obs.uv,
+      solar: obs.solarRadiation
+    });
+
   } catch (err) {
-    res.status(500).json({ error: "Failed to load" });
+    res.status(500).json({ error: "Failed to load weather" });
   }
 });
 
+// ROOT
+app.get("/", (req, res) => {
+  res.send('Climate Lab running 🚀 <a href="/weather">Open Dashboard</a>');
+});
+
+// UI PAGE
 app.get("/weather", (req, res) => {
   res.send(`
-<!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Climate Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <style>
 body {
-  margin:0;
-  font-family:-apple-system;
-  background:linear-gradient(#0f172a,#1e293b);
-  color:white;
-  padding:20px;
+  margin: 0;
+  font-family: -apple-system;
+  background: linear-gradient(to bottom, #0f172a, #1e293b);
+  color: white;
+  display: flex;
+  justify-content: center;
+  padding: 20px;
 }
 
 .card {
-  max-width:420px;
-  margin:auto;
-  background:rgba(255,255,255,0.08);
-  backdrop-filter:blur(20px);
-  border-radius:25px;
-  padding:20px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(20px);
+  padding: 25px;
+  border-radius: 30px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 30px 60px rgba(0,0,0,0.4);
 }
 
 .title {
-  text-align:center;
-  font-size:22px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.location {
+  text-align: center;
+  opacity: 0.7;
+  font-size: 13px;
 }
 
 .temp {
-  text-align:center;
-  font-size:60px;
-  margin:10px 0;
+  text-align: center;
+  font-size: 70px;
+  margin: 15px 0 5px;
+}
+
+.feels {
+  text-align: center;
+  opacity: 0.8;
+  margin-bottom: 20px;
 }
 
 .grid {
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:10px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .box {
-  background:rgba(255,255,255,0.05);
-  padding:10px;
-  border-radius:12px;
-  font-size:14px;
+  background: rgba(255,255,255,0.05);
+  padding: 12px;
+  border-radius: 16px;
 }
 
-.slider-wrap {
-  margin-top:20px;
-  text-align:center;
+.label {
+  font-size: 12px;
+  opacity: 0.6;
 }
 
-input[type=range] {
-  width:100%;
-}
-
-.time-label {
-  font-size:13px;
-  opacity:0.7;
-  margin-top:5px;
+.value {
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .updated {
-  text-align:center;
-  font-size:12px;
-  opacity:0.6;
-  margin-top:10px;
+  text-align: center;
+  margin-top: 15px;
+  font-size: 12px;
+  opacity: 0.6;
 }
 </style>
 </head>
@@ -100,98 +141,70 @@ input[type=range] {
 
 <div class="card">
   <div class="title">🌦 Climate Lab</div>
+  <div class="location" id="location">--</div>
+
   <div class="temp" id="temp">--°C</div>
+  <div class="feels" id="feels">Feels like --°</div>
 
   <div class="grid">
-    <div class="box">Humidity: <b id="humidity">--</b>%</div>
-    <div class="box">Dew Point: <b id="dewpt">--</b>°C</div>
+    <div class="box"><div class="label">Humidity</div><div class="value" id="humidity">--%</div></div>
+    <div class="box"><div class="label">Dew Point</div><div class="value" id="dewpt">--°C</div></div>
 
-    <div class="box">Wind: <b id="wind">--</b> km/h</div>
-    <div class="box">Gust: <b id="gust">--</b> km/h</div>
+    <div class="box"><div class="label">Wind</div><div class="value" id="wind">-- km/h</div></div>
+    <div class="box"><div class="label">Wind Gust</div><div class="value" id="windGust">-- km/h</div></div>
 
-    <div class="box">Direction: <b id="dir">--</b>°</div>
-    <div class="box">Pressure: <b id="pressure">--</b> hPa</div>
+    <div class="box"><div class="label">Direction</div><div class="value" id="windDir">--°</div></div>
+    <div class="box"><div class="label">Pressure</div><div class="value" id="pressure">-- hPa</div></div>
 
-    <div class="box">Rain Rate: <b id="rainRate">--</b></div>
-    <div class="box">Rain Total: <b id="rainTotal">--</b></div>
+    <div class="box"><div class="label">Rain Rate</div><div class="value" id="rainRate">-- mm</div></div>
+    <div class="box"><div class="label">Rain Total</div><div class="value" id="rainTotal">-- mm</div></div>
 
-    <div class="box">UV: <b id="uv">--</b></div>
-    <div class="box">Solar: <b id="solar">--</b></div>
-  </div>
-
-  <div class="slider-wrap">
-    <input type="range" min="0" max="24" value="0" id="slider">
-    <div class="time-label" id="timeLabel">Now</div>
+    <div class="box"><div class="label">UV</div><div class="value" id="uv">--</div></div>
+    <div class="box"><div class="label">Solar</div><div class="value" id="solar">--</div></div>
   </div>
 
   <div class="updated" id="updated">Updated: --</div>
 </div>
 
 <script>
-let allData = [];
+async function updateWeather() {
+  try {
+    const res = await fetch("/api/weather?t=" + Date.now());
+    const data = await res.json();
 
-function set(id, val){
-  document.getElementById(id).innerText = val ?? "--";
+    document.getElementById("location").textContent = data.location;
+    document.getElementById("temp").textContent = data.temp + "°C";
+    document.getElementById("feels").textContent = "Feels like " + (data.feelsLike ?? "--") + "°";
+
+    document.getElementById("humidity").textContent = (data.humidity ?? "--") + "%";
+    document.getElementById("dewpt").textContent = (data.dewpt ?? "--") + "°C";
+
+    document.getElementById("wind").textContent = (data.wind ?? "--") + " km/h";
+    document.getElementById("windGust").textContent = (data.windGust ?? "--") + " km/h";
+    document.getElementById("windDir").textContent = (data.windDir ?? "--") + "°";
+
+    document.getElementById("pressure").textContent = (data.pressure ?? "--") + " hPa";
+
+    document.getElementById("rainRate").textContent = (data.precipRate ?? "--") + " mm";
+    document.getElementById("rainTotal").textContent = (data.precipTotal ?? "--") + " mm";
+
+    document.getElementById("uv").textContent = data.uv ?? "--";
+    document.getElementById("solar").textContent = data.solar ?? "--";
+
+    document.getElementById("updated").textContent = "Updated: " + data.updated;
+
+  } catch (err) {
+    console.error(err);
+  }
 }
 
-function updateDisplay(index){
-  const obs = allData[index];
-  if(!obs) return;
-
-  const m = obs.metric;
-
-  set("temp", m.temp + "°C");
-  set("humidity", obs.humidity);
-  set("dewpt", m.dewpt);
-  set("wind", m.windSpeed);
-  set("gust", m.windGust);
-  set("dir", obs.winddir);
-  set("pressure", m.pressure);
-  set("rainRate", m.precipRate);
-  set("rainTotal", m.precipTotal);
-  set("uv", obs.uv);
-  set("solar", obs.solarRadiation);
-
-  set("updated", "Updated: " + obs.obsTimeLocal);
-}
-
-async function load(){
-  const res = await fetch("/api/weather");
-  const data = await res.json();
-
-  // newest last
-  allData = data;
-
-  updateDisplay(allData.length - 1);
-}
-
-document.getElementById("slider").addEventListener("input", (e)=>{
-  const hoursAgo = parseInt(e.target.value);
-
-  const nowIndex = allData.length - 1;
-
-  // approx: 1 reading every ~5 min → 12 per hour
-  const offset = hoursAgo * 12;
-
-  const index = Math.max(0, nowIndex - offset);
-
-  updateDisplay(index);
-
-  document.getElementById("timeLabel").innerText =
-    hoursAgo === 0 ? "Now" : hoursAgo + " hour(s) ago";
-});
-
-// auto refresh latest data
-setInterval(load, 10000);
-
-load();
+updateWeather();
+setInterval(updateWeather, 10000);
 </script>
 
 </body>
 </html>
-`);
+  `);
 });
 
-app.listen(PORT, () => {
-  console.log("Running on " + PORT);
-});
+app.listen(PORT, () => console.log("Running on " + PORT));
