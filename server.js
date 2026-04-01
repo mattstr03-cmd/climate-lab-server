@@ -4,13 +4,14 @@ import fetch from "node-fetch";
 const app = express();
 const port = process.env.PORT || 8080;
 
-const API_KEY = process.env.API_KEY;
-const STATION_ID = process.env.STATION_ID;
+// 🔥 HARDCODE (no env variables anymore)
+const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
+const STATION_ID = "ISYDNE4503";
 
 app.get("/", async (req, res) => {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-    
+
     const response = await fetch(url);
     const data = await response.json();
 
@@ -33,11 +34,11 @@ app.get("/", async (req, res) => {
             Updated: ${obs.obsTimeLocal}
           </p>
         </body>
-      </html>s
+      </html>
     `);
   } catch (err) {
-    res.send("Error fetching weather");
     console.error(err);
+    res.send("Error fetching weather");
   }
 });
 
