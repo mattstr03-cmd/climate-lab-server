@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 const app = express();
 
-const API_KEY = "...";
+const API_KEY = "d7a10b87676b42fca10b87676b02fcea";
 const STATION_ID = "ISYDNE4503";
 const PORT = process.env.PORT || 8080;
 
