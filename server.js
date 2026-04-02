@@ -4,7 +4,7 @@ import crypto from "crypto";
 
 const app = express();
 
-const API_KEY = "c9a45997f96d49c2a45997f96d29c22c";
+const API_KEY = "...";
 const STATION_ID = "ISYDNE4503";
 const PORT = process.env.PORT || 8080;
 
@@ -95,7 +95,7 @@ async function logWeather() {
   }
 }
 
-setInterval(logWeather, 30000);
+setInterval(logWeather, 60000);
 logWeather();
 
 // ==============================
