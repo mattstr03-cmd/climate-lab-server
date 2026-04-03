@@ -11,10 +11,16 @@ const PORT = process.env.PORT || 8080;
 const DATA_FILE = "weather-log.json";
 
 // ==============================
-// 🧠 FETCH WEATHER
+// 🧠 CACHE (LATEST DATA)
+// ==============================
+let latestData = null;
+
+// ==============================
+// 🧠 FETCH WEATHER (REAL API)
 // ==============================
 async function fetchWeatherRaw() {
   const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
+  
   const response = await fetch(url);
   const data = await response.json();
 
@@ -46,11 +52,14 @@ async function fetchWeatherRaw() {
 }
 
 // ==============================
-// 📊 LOGGER (every 30s)
+// 📊 LOGGER (every 60s)
 // ==============================
 async function logWeather() {
   try {
     const data = await fetchWeatherRaw();
+
+    // ✅ update cache
+    latestData = data;
 
     const entry = {
       id: crypto.randomUUID(),
@@ -95,18 +104,36 @@ async function logWeather() {
   }
 }
 
+// run every 60 seconds
 setInterval(logWeather, 60000);
+
+// run immediately on startup
 logWeather();
 
 // ==============================
-// 🌦 CURRENT API
+// 🌦 CURRENT API (CACHED)
 // ==============================
-app.get("/api/weather", async (req, res) => {
+app.get("/api/weather", (req, res) => {
+  if (!latestData) {
+    return res.status(503).json({ error: "No data yet" });
+  }
+
+  res.json(latestData);
+});
+
+// ==============================
+// 👆 MANUAL FETCH (DIRECT API)
+// ==============================
+app.get("/api/weather/manual", async (req, res) => {
   try {
     const data = await fetchWeatherRaw();
+
+    // optionally update cache
+    latestData = data;
+
     res.json(data);
   } catch {
-    res.status(500).json({ error: "Failed to load weather" });
+    res.status(500).json({ error: "Manual fetch failed" });
   }
 });
 
