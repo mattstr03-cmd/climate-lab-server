@@ -10,9 +10,6 @@ const PORT = process.env.PORT || 8080;
 
 const DATA_FILE = "weather-log.json";
 
-// ==============================
-// 🧠 CACHE + STATUS
-// ==============================
 let latestData = null;
 
 let apiStatus = {
@@ -22,9 +19,6 @@ let apiStatus = {
   lastErrorTime: null
 };
 
-// ==============================
-// 🧠 FETCH WEATHER (SAFE + DETECT)
-// ==============================
 async function fetchWeatherRaw() {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
@@ -32,95 +26,82 @@ async function fetchWeatherRaw() {
     const response = await fetch(url);
     const text = await response.text();
 
-    // ❌ HTML response (CDN / blocked / quota)
-    if (text.startsWith("<")) {
+    if (!response.ok) {
+      throw new Error(`Weather API HTTP ${response.status}`);
+    }
+
+    if (text.trimStart().startsWith("<")) {
       throw new Error("API returned HTML (likely blocked or quota exceeded)");
     }
 
     const data = JSON.parse(text);
 
-    // ❌ API error object
     if (data.success === false || data.errors) {
       throw new Error(data.errors?.[0]?.message || "Unknown API error");
     }
 
-    const obs = data.observations[0];
-    const m = obs.metric;
+    const obs = data.observations?.[0];
+    const m = obs?.metric;
 
-    // ✅ SUCCESS
+    if (!obs || !m) {
+      throw new Error("Weather API payload missing observation data");
+    }
+
     apiStatus.ok = true;
     apiStatus.message = "OK";
     apiStatus.lastSuccessTime = new Date().toISOString();
+    apiStatus.lastErrorTime = null;
 
     return {
       location: obs.neighborhood || "Your Station",
       updated: obs.obsTimeLocal,
-
       temp: m.temp,
       feelsLike: m.heatIndex,
-
       humidity: obs.humidity,
       dewpt: m.dewpt,
-
       wind: m.windSpeed,
       windGust: m.windGust,
       windDir: obs.winddir,
-
       pressure: m.pressure,
-
       precipRate: m.precipRate,
       precipTotal: m.precipTotal,
-
       uv: obs.uv,
       solar: obs.solarRadiation
     };
-
   } catch (err) {
-    // ❌ ERROR STATE
     apiStatus.ok = false;
     apiStatus.message = err.message;
     apiStatus.lastErrorTime = new Date().toISOString();
 
-    console.log("⚠️ API ERROR:", err.message);
-
+    console.log("API ERROR:", err.message);
     return null;
   }
 }
 
-// ==============================
-// 📊 LOGGER (every 60s)
-// ==============================
 async function logWeather() {
   try {
     const data = await fetchWeatherRaw();
 
-    // ❌ skip logging if bad data
     if (!data) {
-      console.log("⏸ Skipping log — API issue");
+      console.log("Skipping log - API issue");
       return;
     }
 
-    // ✅ update cache
     latestData = data;
 
     const entry = {
       id: crypto.randomUUID(),
       date: new Date().toISOString(),
-
       temp: data.temp,
       feelsLike: data.feelsLike,
       humidity: data.humidity,
       dewpt: data.dewpt,
-
       wind: data.wind,
       windGust: data.windGust,
       windDir: data.windDir,
-
       pressure: data.pressure,
-
       precipRate: data.precipRate,
       precipTotal: data.precipTotal,
-
       uv: data.uv,
       solar: data.solar
     };
@@ -128,33 +109,29 @@ async function logWeather() {
     let history = [];
 
     if (fs.existsSync(DATA_FILE)) {
-      history = JSON.parse(fs.readFileSync(DATA_FILE));
+      history = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
     }
 
     history.push(entry);
 
-    // keep last 7 days
-    const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
-    history = history.filter(e => new Date(e.date).getTime() > cutoff);
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    history = history.filter((e) => new Date(e.date).getTime() > cutoff);
 
     fs.writeFileSync(DATA_FILE, JSON.stringify(history));
 
-    console.log("📊 Logged:", entry.date);
-
+    console.log("Logged:", entry.date);
   } catch (err) {
-    console.error("❌ Logger failed:", err.message);
+    apiStatus.ok = false;
+    apiStatus.message = err.message;
+    apiStatus.lastErrorTime = new Date().toISOString();
+
+    console.error("Logger failed:", err.message);
   }
 }
 
-// run every 60 seconds
 setInterval(logWeather, 60000);
-
-// run immediately on startup
 logWeather();
 
-// ==============================
-// 🌦 CURRENT API (CACHED + STATUS)
-// ==============================
 app.get("/api/weather", (req, res) => {
   res.json({
     status: apiStatus,
@@ -162,9 +139,6 @@ app.get("/api/weather", (req, res) => {
   });
 });
 
-// ==============================
-// 👆 MANUAL FETCH (DIRECT API)
-// ==============================
 app.get("/api/weather/manual", async (req, res) => {
   const data = await fetchWeatherRaw();
 
@@ -183,21 +157,23 @@ app.get("/api/weather/manual", async (req, res) => {
   });
 });
 
-// ==============================
-// 📈 HISTORY API
-// ==============================
 app.get("/api/history", (req, res) => {
   try {
-    if (!fs.existsSync(DATA_FILE)) return res.json([]);
+    let data = [];
 
-    const data = JSON.parse(fs.readFileSync(DATA_FILE));
+    if (fs.existsSync(DATA_FILE)) {
+      data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    }
 
     res.json({
       status: apiStatus,
       data
     });
+  } catch (err) {
+    apiStatus.ok = false;
+    apiStatus.message = err.message;
+    apiStatus.lastErrorTime = new Date().toISOString();
 
-  } catch {
     res.status(500).json({
       status: apiStatus,
       data: []
@@ -205,19 +181,12 @@ app.get("/api/history", (req, res) => {
   }
 });
 
-// ==============================
-// 📊 STATUS API (simple)
-// ==============================
 app.get("/api/status", (req, res) => {
   res.json(apiStatus);
 });
 
-// ==============================
-// ROOT (optional)
-// ==============================
 app.get("/", (req, res) => {
-  res.send("Weather server running 🚀");
+  res.send("Weather server running");
 });
 
-// ==============================
 app.listen(PORT, () => console.log("Running on " + PORT));
