@@ -11,44 +11,80 @@ const PORT = process.env.PORT || 8080;
 const DATA_FILE = "weather-log.json";
 
 // ==============================
-// 🧠 CACHE (LATEST DATA)
+// 🧠 CACHE + STATUS
 // ==============================
 let latestData = null;
 
+let apiStatus = {
+  ok: true,
+  message: "OK",
+  lastSuccessTime: null,
+  lastErrorTime: null
+};
+
 // ==============================
-// 🧠 FETCH WEATHER (REAL API)
+// 🧠 FETCH WEATHER (SAFE + DETECT)
 // ==============================
 async function fetchWeatherRaw() {
-  const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
-  
-  const response = await fetch(url);
-  const data = await response.json();
+  try {
+    const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
 
-  const obs = data.observations[0];
-  const m = obs.metric;
+    const response = await fetch(url);
+    const text = await response.text();
 
-  return {
-    location: obs.neighborhood || "Your Station",
-    updated: obs.obsTimeLocal,
+    // ❌ HTML response (CDN / blocked / quota)
+    if (text.startsWith("<")) {
+      throw new Error("API returned HTML (likely blocked or quota exceeded)");
+    }
 
-    temp: m.temp,
-    feelsLike: m.heatIndex,
+    const data = JSON.parse(text);
 
-    humidity: obs.humidity,
-    dewpt: m.dewpt,
+    // ❌ API error object
+    if (data.success === false || data.errors) {
+      throw new Error(data.errors?.[0]?.message || "Unknown API error");
+    }
 
-    wind: m.windSpeed,
-    windGust: m.windGust,
-    windDir: obs.winddir,
+    const obs = data.observations[0];
+    const m = obs.metric;
 
-    pressure: m.pressure,
+    // ✅ SUCCESS
+    apiStatus.ok = true;
+    apiStatus.message = "OK";
+    apiStatus.lastSuccessTime = new Date().toISOString();
 
-    precipRate: m.precipRate,
-    precipTotal: m.precipTotal,
+    return {
+      location: obs.neighborhood || "Your Station",
+      updated: obs.obsTimeLocal,
 
-    uv: obs.uv,
-    solar: obs.solarRadiation
-  };
+      temp: m.temp,
+      feelsLike: m.heatIndex,
+
+      humidity: obs.humidity,
+      dewpt: m.dewpt,
+
+      wind: m.windSpeed,
+      windGust: m.windGust,
+      windDir: obs.winddir,
+
+      pressure: m.pressure,
+
+      precipRate: m.precipRate,
+      precipTotal: m.precipTotal,
+
+      uv: obs.uv,
+      solar: obs.solarRadiation
+    };
+
+  } catch (err) {
+    // ❌ ERROR STATE
+    apiStatus.ok = false;
+    apiStatus.message = err.message;
+    apiStatus.lastErrorTime = new Date().toISOString();
+
+    console.log("⚠️ API ERROR:", err.message);
+
+    return null;
+  }
 }
 
 // ==============================
@@ -57,6 +93,12 @@ async function fetchWeatherRaw() {
 async function logWeather() {
   try {
     const data = await fetchWeatherRaw();
+
+    // ❌ skip logging if bad data
+    if (!data) {
+      console.log("⏸ Skipping log — API issue");
+      return;
+    }
 
     // ✅ update cache
     latestData = data;
@@ -111,30 +153,34 @@ setInterval(logWeather, 60000);
 logWeather();
 
 // ==============================
-// 🌦 CURRENT API (CACHED)
+// 🌦 CURRENT API (CACHED + STATUS)
 // ==============================
 app.get("/api/weather", (req, res) => {
-  if (!latestData) {
-    return res.status(503).json({ error: "No data yet" });
-  }
-
-  res.json(latestData);
+  res.json({
+    status: apiStatus,
+    data: latestData
+  });
 });
 
 // ==============================
 // 👆 MANUAL FETCH (DIRECT API)
 // ==============================
 app.get("/api/weather/manual", async (req, res) => {
-  try {
-    const data = await fetchWeatherRaw();
+  const data = await fetchWeatherRaw();
 
-    // optionally update cache
-    latestData = data;
-
-    res.json(data);
-  } catch {
-    res.status(500).json({ error: "Manual fetch failed" });
+  if (!data) {
+    return res.status(503).json({
+      status: apiStatus,
+      data: null
+    });
   }
+
+  latestData = data;
+
+  res.json({
+    status: apiStatus,
+    data
+  });
 });
 
 // ==============================
@@ -143,11 +189,34 @@ app.get("/api/weather/manual", async (req, res) => {
 app.get("/api/history", (req, res) => {
   try {
     if (!fs.existsSync(DATA_FILE)) return res.json([]);
+
     const data = JSON.parse(fs.readFileSync(DATA_FILE));
-    res.json(data);
+
+    res.json({
+      status: apiStatus,
+      data
+    });
+
   } catch {
-    res.status(500).json({ error: "Failed to load history" });
+    res.status(500).json({
+      status: apiStatus,
+      data: []
+    });
   }
+});
+
+// ==============================
+// 📊 STATUS API (simple)
+// ==============================
+app.get("/api/status", (req, res) => {
+  res.json(apiStatus);
+});
+
+// ==============================
+// ROOT (optional)
+// ==============================
+app.get("/", (req, res) => {
+  res.send("Weather server running 🚀");
 });
 
 // ==============================
