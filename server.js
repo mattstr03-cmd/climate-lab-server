@@ -29,7 +29,7 @@ function toNumber(value) {
 }
 
 // ==============================
-// 🌦 FETCH WEATHER (RAW + PRECISE)
+// 🌦 FETCH WEATHER (PRECISE)
 // ==============================
 async function fetchWeatherRaw() {
   try {
@@ -54,7 +54,7 @@ async function fetchWeatherRaw() {
 
     const obs = data.observations?.[0];
 
-    // 🔥 USE HIGHER PRECISION SOURCE
+    // 🔥 Use most precise metric set
     const m = obs?.metric_si || obs?.metric;
 
     if (!obs || !m) {
@@ -70,7 +70,7 @@ async function fetchWeatherRaw() {
       location: obs.neighborhood || "Your Station",
       updated: obs.obsTimeLocal,
 
-      // 🔥 NO ROUNDING — KEEP FULL PRECISION
+      // 🔥 NO ROUNDING ANYWHERE
       temp: toNumber(m.temp),
       feelsLike: toNumber(m.heatIndex),
       humidity: toNumber(obs.humidity),
@@ -115,7 +115,12 @@ async function logWeather() {
 
     const entry = {
       id: crypto.randomUUID(),
-      date: new Date().toISOString(),
+
+      // 🔥 USE REAL OBSERVATION TIME (fallback safe)
+      date: data.updated && !isNaN(new Date(data.updated))
+        ? new Date(data.updated).toISOString()
+        : new Date().toISOString(),
+
       ...data
     };
 
