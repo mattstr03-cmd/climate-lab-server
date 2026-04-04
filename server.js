@@ -19,18 +19,6 @@ let apiStatus = {
   lastErrorTime: null
 };
 
-// ==============================
-// 🧠 SAFE NUMBER PARSER
-// ==============================
-function toNumber(value) {
-  if (value == null) return null;
-  const num = Number(value);
-  return Number.isNaN(num) ? null : num;
-}
-
-// ==============================
-// 🌦 FETCH WEATHER (PRECISE)
-// ==============================
 async function fetchWeatherRaw() {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
@@ -43,7 +31,7 @@ async function fetchWeatherRaw() {
     }
 
     if (text.trimStart().startsWith("<")) {
-      throw new Error("API returned HTML (blocked/quota exceeded)");
+      throw new Error("API returned HTML (likely blocked or quota exceeded)");
     }
 
     const data = JSON.parse(text);
@@ -53,12 +41,10 @@ async function fetchWeatherRaw() {
     }
 
     const obs = data.observations?.[0];
-
-    // 🔥 Use most precise metric set
-    const m = obs?.metric_si || obs?.metric;
+    const m = obs?.metric;
 
     if (!obs || !m) {
-      throw new Error("Missing observation data");
+      throw new Error("Weather API payload missing observation data");
     }
 
     apiStatus.ok = true;
@@ -69,26 +55,19 @@ async function fetchWeatherRaw() {
     return {
       location: obs.neighborhood || "Your Station",
       updated: obs.obsTimeLocal,
-
-      // 🔥 NO ROUNDING ANYWHERE
-      temp: toNumber(m.temp),
-      feelsLike: toNumber(m.heatIndex),
-      humidity: toNumber(obs.humidity),
-      dewpt: toNumber(m.dewpt),
-
-      wind: toNumber(m.windSpeed),
-      windGust: toNumber(m.windGust),
-      windDir: toNumber(obs.winddir),
-
-      pressure: toNumber(m.pressure),
-
-      precipRate: toNumber(m.precipRate),
-      precipTotal: toNumber(m.precipTotal),
-
-      uv: toNumber(obs.uv),
-      solar: toNumber(obs.solarRadiation)
+      temp: m.temp,
+      feelsLike: m.heatIndex,
+      humidity: obs.humidity,
+      dewpt: m.dewpt,
+      wind: m.windSpeed,
+      windGust: m.windGust,
+      windDir: obs.winddir,
+      pressure: m.pressure,
+      precipRate: m.precipRate,
+      precipTotal: m.precipTotal,
+      uv: obs.uv,
+      solar: obs.solarRadiation
     };
-
   } catch (err) {
     apiStatus.ok = false;
     apiStatus.message = err.message;
@@ -99,9 +78,6 @@ async function fetchWeatherRaw() {
   }
 }
 
-// ==============================
-// 🧠 LOG DATA (HISTORY)
-// ==============================
 async function logWeather() {
   try {
     const data = await fetchWeatherRaw();
@@ -115,35 +91,35 @@ async function logWeather() {
 
     const entry = {
       id: crypto.randomUUID(),
-
-      // 🔥 USE REAL OBSERVATION TIME (fallback safe)
-      date: data.updated && !isNaN(new Date(data.updated))
-        ? new Date(data.updated).toISOString()
-        : new Date().toISOString(),
-
-      ...data
+      date: new Date().toISOString(),
+      temp: data.temp,
+      feelsLike: data.feelsLike,
+      humidity: data.humidity,
+      dewpt: data.dewpt,
+      wind: data.wind,
+      windGust: data.windGust,
+      windDir: data.windDir,
+      pressure: data.pressure,
+      precipRate: data.precipRate,
+      precipTotal: data.precipTotal,
+      uv: data.uv,
+      solar: data.solar
     };
 
     let history = [];
 
     if (fs.existsSync(DATA_FILE)) {
-      try {
-        history = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-      } catch {
-        history = [];
-      }
+      history = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
     }
 
     history.push(entry);
 
-    // keep last 7 days
     const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
     history = history.filter((e) => new Date(e.date).getTime() > cutoff);
 
-    fs.writeFileSync(DATA_FILE, JSON.stringify(history, null, 2));
+    fs.writeFileSync(DATA_FILE, JSON.stringify(history));
 
     console.log("Logged:", entry.date);
-
   } catch (err) {
     apiStatus.ok = false;
     apiStatus.message = err.message;
@@ -153,15 +129,8 @@ async function logWeather() {
   }
 }
 
-// ==============================
-// 🔁 AUTO FETCH (EVERY 60s)
-// ==============================
 setInterval(logWeather, 60000);
 logWeather();
-
-// ==============================
-// 🌐 API ROUTES
-// ==============================
 
 app.get("/api/weather", (req, res) => {
   res.json({
@@ -200,7 +169,6 @@ app.get("/api/history", (req, res) => {
       status: apiStatus,
       data
     });
-
   } catch (err) {
     apiStatus.ok = false;
     apiStatus.message = err.message;
