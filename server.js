@@ -19,6 +19,12 @@ let apiStatus = {
   lastErrorTime: null
 };
 
+function roundTo(value, decimals) {
+  if (value == null || Number.isNaN(value)) return value;
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
 async function fetchWeatherRaw() {
   try {
     const url = `https://api.weather.com/v2/pws/observations/current?stationId=${STATION_ID}&format=json&units=m&apiKey=${API_KEY}`;
@@ -55,14 +61,14 @@ async function fetchWeatherRaw() {
     return {
       location: obs.neighborhood || "Your Station",
       updated: obs.obsTimeLocal,
-      temp: m.temp,
-      feelsLike: m.heatIndex,
+      temp: roundTo(m.temp, 1),
+      feelsLike: roundTo(m.heatIndex, 1),
       humidity: obs.humidity,
-      dewpt: m.dewpt,
-      wind: m.windSpeed,
-      windGust: m.windGust,
+      dewpt: roundTo(m.dewpt, 1),
+      wind: roundTo(m.windSpeed, 1),
+      windGust: roundTo(m.windGust, 1),
       windDir: obs.winddir,
-      pressure: m.pressure,
+      pressure: roundTo(m.pressure, 2),
       precipRate: m.precipRate,
       precipTotal: m.precipTotal,
       uv: obs.uv,
